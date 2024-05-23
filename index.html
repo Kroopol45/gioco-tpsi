@@ -7,7 +7,6 @@
 <body style="margin: 0;">
     <script type="module">
         class Carta {
-            
             constructor(numero, girato){
                 this.numero = numero;
                 this.girato = girato;
@@ -38,14 +37,17 @@
         for(let i=0; i < 24; i++){
             await PIXI.Assets.load('Assets/Cards/' + i + ".png");
         }
+        await PIXI.Assets.load('Assets/covered.jpg');
         
         const cards = [];
+        const coveredCards = [];
         for(let i=0; i < nCard; i++){
-            cards.push(PIXI.Sprite.from(new Carta(i, false).getDir()));
+            cards.push(new Carta(i, false));
         }
         for(let i=0; i < nCard; i++){
-            cards.push(PIXI.Sprite.from(new Carta(i, false).getDir()));
+            cards.push(new Carta(i, false));
         }
+
         let n = 0;
         for(let i = 0; i < cards.length; i++) {
             let temp = cards[i];
@@ -60,14 +62,17 @@
         for(let i = 0; i < 4; i++) { 
             let h = 20 + (i * (cardH + 20));
             for(let j = 0; j < 6; j++) {
-                cards[cont].x = 20 + (j * (cardW + 20));
-                cards[cont].y = h;
-                cards[cont].width = cardW; 
-                cards[cont].height = cardH;
-                cards[cont].interactive = true;
-                cards[cont].buttonMode = true;
-                cards[cont].on('pointerdown', onCardClick);
-                app.stage.addChild(cards[cont]);
+                let card = PIXI.Sprite.from('Assets/covered.jpg');
+                card.x = 20 + (j * (cardW + 20));
+                card.y = h;
+                card.width = cardW; 
+                card.height = cardH;
+                card.interactive = true;
+                card.buttonMode = true;
+                card.on('pointerdown', onCardClick);
+                card.cardData = cards[cont];
+                coveredCards.push(card);
+                app.stage.addChild(card);
                 cont++;
             }
         }
@@ -77,17 +82,17 @@
 
         function onCardClick() { 
             if(this === firstSelected) {
-                this.alpha = 1;
+                this.texture = PIXI.Texture.from('Assets/covered.jpg');
                 firstSelected = null;
                 return;
             }
             if (!firstSelected) {
                 firstSelected = this;
-                this.alpha = 0.5; // Mark the card as selected
+                this.texture = PIXI.Texture.from(this.cardData.getDir()); // Uncover the card
             } else if (!secondSelected) {
                 secondSelected = this;
-                this.alpha = 0.5; // Mark the card as selected
-                if (firstSelected.texture === secondSelected.texture) {
+                this.texture = PIXI.Texture.from(this.cardData.getDir()); // Uncover the card
+                if (firstSelected.cardData.getNumero() === secondSelected.cardData.getNumero()) {
                     // Cards match
                     setTimeout(() => {
                         app.stage.removeChild(firstSelected);
@@ -98,8 +103,8 @@
                 } else {
                     // Cards do not match
                     setTimeout(() => {
-                        firstSelected.alpha = 1;
-                        secondSelected.alpha = 1;
+                        firstSelected.texture = PIXI.Texture.from('Assets/covered.jpg');
+                        secondSelected.texture = PIXI.Texture.from('Assets/covered.jpg');
                         firstSelected = null;
                         secondSelected = null;
                     }, 1000);
