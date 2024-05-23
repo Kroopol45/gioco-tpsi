@@ -37,7 +37,7 @@
         for(let i=0; i < 24; i++){
             await PIXI.Assets.load('Assets/Cards/' + i + ".png");
         }
-        await PIXI.Assets.load('Assets/covered.png');
+        await PIXI.Assets.load('Assets/covered.jpg');
         
         const cards = [];
         const coveredCards = [];
@@ -62,7 +62,7 @@
         for(let i = 0; i < 4; i++) { 
             let h = 20 + (i * (cardH + 20));
             for(let j = 0; j < 6; j++) {
-                let card = PIXI.Sprite.from('Assets/covered.png');
+                let card = PIXI.Sprite.from('Assets/covered.jpg');
                 card.x = 20 + (j * (cardW + 20));
                 card.y = h;
                 card.width = cardW; 
@@ -71,54 +71,54 @@
                 card.buttonMode = true;
                 card.on('pointerdown', onCardClick);
                 card.cardData = cards[cont];
-                card.cardWidth = cardW; // Store original width
-                card.cardHeight = cardH; // Store original height
+                card.cardWidth = cardW; 
+                card.cardHeight = cardH; 
                 coveredCards.push(card);
                 app.stage.addChild(card);
                 cont++;
             }
         }
 
-        let firstSelected = null;
-        let secondSelected = null;
+        let ELPRIMO = null;
+        let ELSEGUNDO = null;
 
         function onCardClick() { 
-            if(this === firstSelected) {
-                this.texture = PIXI.Texture.from('Assets/covered.png');
-                this.width = this.cardWidth; // Reset width
-                this.height = this.cardHeight; // Reset height
-                firstSelected = null;
+            if(this === ELPRIMO) {
+                this.texture = PIXI.Texture.from('Assets/covered.jpg');
+                this.width = this.cardWidth; 
+                this.height = this.cardHeight; 
+                ELPRIMO = null;
                 return;
             }
-            if (!firstSelected) {
-                firstSelected = this;
-                this.texture = PIXI.Texture.from(this.cardData.getDir()); // Uncover the card
-                this.width = this.cardWidth; // Reset width
-                this.height = this.cardHeight; // Reset height
-            } else if (!secondSelected) {
-                secondSelected = this;
-                this.texture = PIXI.Texture.from(this.cardData.getDir()); // Uncover the card
-                this.width = this.cardWidth; // Reset width
-                this.height = this.cardHeight; // Reset height
-                if (firstSelected.cardData.getNumero() === secondSelected.cardData.getNumero()) {
-                    // Cards match
+            if (!ELPRIMO) {
+                ELPRIMO = this;
+                this.texture = PIXI.Texture.from(this.cardData.getDir()); // rivela le carte
+                this.width = this.cardWidth; 
+                this.height = this.cardHeight; 
+            } else if (!ELSEGUNDO) {
+                ELSEGUNDO = this;
+                this.texture = PIXI.Texture.from(this.cardData.getDir()); // rivela le carte
+                this.width = this.cardWidth; 
+                this.height = this.cardHeight; 
+                if (ELPRIMO.cardData.getNumero() === ELSEGUNDO.cardData.getNumero()) {
+                    // se le carte sono uguali
                     setTimeout(() => {
-                        app.stage.removeChild(firstSelected);
-                        app.stage.removeChild(secondSelected);
-                        firstSelected = null;
-                        secondSelected = null;
+                        app.stage.removeChild(ELPRIMO);
+                        app.stage.removeChild(ELSEGUNDO);
+                        ELPRIMO = null;
+                        ELSEGUNDO = null;
                     }, 1000);
                 } else {
-                    // Cards do not match
+                    // se le carte non sono uguali
                     setTimeout(() => {
-                        firstSelected.texture = PIXI.Texture.from('Assets/covered.png');
-                        firstSelected.width = firstSelected.cardWidth; // Reset width
-                        firstSelected.height = firstSelected.cardHeight; // Reset height
-                        secondSelected.texture = PIXI.Texture.from('Assets/covered.png');
-                        secondSelected.width = secondSelected.cardWidth; // Reset width
-                        secondSelected.height = secondSelected.cardHeight; // Reset height
-                        firstSelected = null;
-                        secondSelected = null;
+                        ELPRIMO.texture = PIXI.Texture.from('Assets/covered.jpg');
+                        ELPRIMO.width = ELPRIMO.cardWidth; 
+                        ELPRIMO.height = ELPRIMO.cardHeight; 
+                        ELSEGUNDO.texture = PIXI.Texture.from('Assets/covered.jpg');
+                        ELSEGUNDO.width = ELSEGUNDO.cardWidth; 
+                        ELSEGUNDO.height = ELSEGUNDO.cardHeight; 
+                        ELPRIMO = null;
+                        ELSEGUNDO = null;
                     }, 1000);
                 }
             }
