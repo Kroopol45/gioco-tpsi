@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="pixi.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UnderTarots</title>
+</head>
+<body>
+    <script type="module">
+        const width = window.width, height = window.height;
+        const app = new PIXI.Application();
+        await app.init({ width: width, height: height });
+        document.body.appendChild(app.canvas);
+        
+        await PIXI.Assets.load("Assets/Background/snowdin.png");
+        let bg = PIXI.Sprite.from("Assets/Background/snowdin.png");
+        app.stage.addChild(bg);
+
+        for(let i = 0; i < 24; i++) {
+            await PIXI.Assets.load("Assets/Cards/" + i + ".png")
+        }
+        
+    </script>
+</body>
+</html>
