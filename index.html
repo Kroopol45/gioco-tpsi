@@ -75,7 +75,12 @@
         let firstSelected = null;
         let secondSelected = null;
 
-        function onCardClick() {
+        function onCardClick() { 
+            if(this === firstSelected) {
+                this.alpha = 1;
+                firstSelected = null;
+                return;
+            }
             if (!firstSelected) {
                 firstSelected = this;
                 this.alpha = 0.5; // Mark the card as selected
