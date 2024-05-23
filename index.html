@@ -49,12 +49,9 @@
         let n = 0;
         for(let i = 0; i < cards.length; i++) {
             let temp = cards[i];
-            let j = Math.random() * (nCard - 1);
-            j = j.toFixed(0)
-            //console.log(j)
+            let j = Math.floor(Math.random() * cards.length);
             cards[i] = cards[j];
             cards[j] = temp;
-            console.log(cards[i]);
         }
 
         let cardW = (width - 20 - (6 * 20))/6;
@@ -67,22 +64,43 @@
                 cards[cont].y = h;
                 cards[cont].width = cardW; 
                 cards[cont].height = cardH;
+                cards[cont].interactive = true;
+                cards[cont].buttonMode = true;
+                cards[cont].on('pointerdown', onCardClick);
                 app.stage.addChild(cards[cont]);
                 cont++;
             }
         }
 
-        //onmousedown
-            //check x, y
-            //find card by xy
-            //if no card selected
-                //select card
-            //else if cards are the same
-                //despawnale o incollaci sopra una foto a caso boh
-            //else deseleziona
+        let firstSelected = null;
+        let secondSelected = null;
 
-
-
+        function onCardClick() {
+            if (!firstSelected) {
+                firstSelected = this;
+                this.alpha = 0.5; // Mark the card as selected
+            } else if (!secondSelected) {
+                secondSelected = this;
+                this.alpha = 0.5; // Mark the card as selected
+                if (firstSelected.texture === secondSelected.texture) {
+                    // Cards match
+                    setTimeout(() => {
+                        app.stage.removeChild(firstSelected);
+                        app.stage.removeChild(secondSelected);
+                        firstSelected = null;
+                        secondSelected = null;
+                    }, 1000);
+                } else {
+                    // Cards do not match
+                    setTimeout(() => {
+                        firstSelected.alpha = 1;
+                        secondSelected.alpha = 1;
+                        firstSelected = null;
+                        secondSelected = null;
+                    }, 1000);
+                }
+            }
+        }
     </script>
 </body>
 </html>
