@@ -1,6 +1,6 @@
 /*!
- * PixiJS - v8.1.5
- * Compiled Tue, 21 May 2024 10:29:08 UTC
+ * PixiJS - v8.1.1
+ * Compiled Tue, 30 Apr 2024 22:15:03 UTC
  *
  * PixiJS is licensed under the MIT License.
  * http://www.opensource.org/licenses/mit-license
@@ -1661,14 +1661,13 @@ Deprecated since v${version}`);
             const child = this.children[i];
             if (!child)
               continue;
+            if (this.renderGroup) {
+              this.renderGroup.removeChild(child);
+            }
             removed.push(child);
             child.parent = null;
           }
           removeItems(this.children, beginIndex, end);
-          const renderGroup = this.renderGroup || this.parentRenderGroup;
-          if (renderGroup) {
-            renderGroup.removeChildren(removed);
-          }
           for (let i = 0; i < removed.length; ++i) {
             this.emit("childRemoved", removed[i], this, i);
             removed[i].emit("removed", this);
@@ -1761,9 +1760,8 @@ Deprecated since v${version}`);
         child.didChange = true;
         child.didViewUpdate = false;
         child._updateFlags = 15;
-        const renderGroup = this.renderGroup || this.parentRenderGroup;
-        if (renderGroup) {
-          renderGroup.addChild(child);
+        if (this.renderGroup) {
+          this.renderGroup.addChild(child);
         }
         if (this.sortableChildren)
           this.sortDirty = true;
@@ -1797,11 +1795,11 @@ Deprecated since v${version}`);
 
     "use strict";
     class FilterEffect {
-      constructor() {
-        /** the pipe that knows how to handle this effect */
+      constructor(options) {
         this.pipe = "filter";
-        /** the priority of this effect */
         this.priority = 1;
+        this.filters = options == null ? void 0 : options.filters;
+        this.filterArea = options == null ? void 0 : options.filterArea;
       }
       destroy() {
         for (let i = 0; i < this.filters.length; i++) {
@@ -2000,8 +1998,8 @@ Deprecated since v${version}`);
 
     "use strict";
     const effectsMixin = {
-      _maskEffect: null,
-      _filterEffect: null,
+      _mask: null,
+      _filters: null,
       /**
        * @todo Needs docs.
        * @memberof scene.Container#
@@ -2020,9 +2018,8 @@ Deprecated since v${version}`);
           return;
         this.effects.push(effect);
         this.effects.sort((a, b) => a.priority - b.priority);
-        const renderGroup = this.renderGroup || this.parentRenderGroup;
-        if (renderGroup) {
-          renderGroup.structureDidChange = true;
+        if (this.renderGroup) {
+          this.renderGroup.structureDidChange = true;
         }
         this._updateIsSimple();
       },
@@ -2037,24 +2034,26 @@ Deprecated since v${version}`);
         if (index === -1)
           return;
         this.effects.splice(index, 1);
-        if (this.parentRenderGroup) {
-          this.parentRenderGroup.structureDidChange = true;
+        if (!this.isRenderGroupRoot && this.renderGroup) {
+          this.renderGroup.structureDidChange = true;
         }
         this._updateIsSimple();
       },
       set mask(value) {
-        const effect = this._maskEffect;
-        if ((effect == null ? void 0 : effect.mask) === value)
+        this._mask || (this._mask = { mask: null, effect: null });
+        if (this._mask.mask === value)
           return;
-        if (effect) {
-          this.removeEffect(effect);
-          MaskEffectManager.returnMaskEffect(effect);
-          this._maskEffect = null;
+        if (this._mask.effect) {
+          this.removeEffect(this._mask.effect);
+          MaskEffectManager.returnMaskEffect(this._mask.effect);
+          this._mask.effect = null;
         }
+        this._mask.mask = value;
         if (value === null || value === void 0)
           return;
-        this._maskEffect = MaskEffectManager.getMaskEffect(value);
-        this.addEffect(this._maskEffect);
+        const effect = MaskEffectManager.getMaskEffect(value);
+        this._mask.effect = effect;
+        this.addEffect(effect);
       },
       /**
        * Sets a mask for the displayObject. A mask is an object that limits the visibility of an
@@ -2079,26 +2078,34 @@ Deprecated since v${version}`);
        */
       get mask() {
         var _a;
-        return (_a = this._maskEffect) == null ? void 0 : _a.mask;
+        return (_a = this._mask) == null ? void 0 : _a.mask;
       },
       set filters(value) {
-        var _a;
         if (!Array.isArray(value) && value)
           value = [value];
-        const effect = this._filterEffect || (this._filterEffect = new FilterEffect());
         value = value;
+        this._filters || (this._filters = { filters: null, effect: null, filterArea: null });
         const hasFilters = (value == null ? void 0 : value.length) > 0;
-        const hadFilters = ((_a = effect.filters) == null ? void 0 : _a.length) > 0;
-        const didChange = hasFilters !== hadFilters;
+        const didChange = this._filters.effect && !hasFilters || !this._filters.effect && hasFilters;
         value = Array.isArray(value) ? value.slice(0) : value;
-        effect.filters = Object.freeze(value);
+        this._filters.filters = Object.freeze(value);
         if (didChange) {
           if (hasFilters) {
+            const effect = BigPool.get(FilterEffect);
+            this._filters.effect = effect;
             this.addEffect(effect);
           } else {
+            const effect = this._filters.effect;
             this.removeEffect(effect);
-            effect.filters = value != null ? value : null;
+            effect.filterArea = null;
+            effect.filters = null;
+            this._filters.effect = null;
+            BigPool.return(effect);
           }
+        }
+        if (hasFilters) {
+          this._filters.effect.filters = value;
+          this._filters.effect.filterArea = this.filterArea;
         }
       },
       /**
@@ -2109,11 +2116,11 @@ Deprecated since v${version}`);
        */
       get filters() {
         var _a;
-        return (_a = this._filterEffect) == null ? void 0 : _a.filters;
+        return (_a = this._filters) == null ? void 0 : _a.filters;
       },
       set filterArea(value) {
-        this._filterEffect || (this._filterEffect = new FilterEffect());
-        this._filterEffect.filterArea = value;
+        this._filters || (this._filters = { filters: null, effect: null, filterArea: null });
+        this._filters.filterArea = value;
       },
       /**
        * The area the filter is applied to. This is used as more of an optimization
@@ -2124,7 +2131,7 @@ Deprecated since v${version}`);
        */
       get filterArea() {
         var _a;
-        return (_a = this._filterEffect) == null ? void 0 : _a.filterArea;
+        return (_a = this._filters) == null ? void 0 : _a.filterArea;
       }
     };
 
@@ -3082,7 +3089,7 @@ Deprecated since v${version}`);
     const onRenderMixin = {
       _onRender: null,
       set onRender(func) {
-        const renderGroup = this.renderGroup || this.parentRenderGroup;
+        const renderGroup = this.renderGroup;
         if (!func) {
           if (this._onRender) {
             renderGroup == null ? void 0 : renderGroup.removeOnRender(this);
@@ -3161,8 +3168,8 @@ Deprecated since v${version}`);
           this.parent.sortableChildren = true;
           this.parent.sortDirty = true;
         }
-        if (this.parentRenderGroup) {
-          this.parentRenderGroup.structureDidChange = true;
+        if (this.renderGroup && !this.isRenderGroupRoot) {
+          this.renderGroup.structureDidChange = true;
         }
       },
       /**
@@ -3280,6 +3287,7 @@ Deprecated since v${version}`);
         this.canBundle = false;
         this.renderGroupParent = null;
         this.renderGroupChildren = [];
+        this._children = [];
         this.worldTransform = new Matrix();
         this.worldColorAlpha = 4294967295;
         this.worldColor = 16777215;
@@ -3294,13 +3302,7 @@ Deprecated since v${version}`);
         this.instructionSet = new InstructionSet();
         this._onRenderContainers = [];
         this.root = root;
-        if (root._onRender)
-          this.addOnRender(root);
-        root.didChange = true;
-        const children = root.children;
-        for (let i = 0; i < children.length; i++) {
-          this.addChild(children[i]);
-        }
+        this.addChild(root);
       }
       get localTransform() {
         return this.root.localTransform;
@@ -3310,9 +3312,13 @@ Deprecated since v${version}`);
           renderGroupChild.renderGroupParent._removeRenderGroupChild(renderGroupChild);
         }
         renderGroupChild.renderGroupParent = this;
+        this.onChildUpdate(renderGroupChild.root);
         this.renderGroupChildren.push(renderGroupChild);
       }
       _removeRenderGroupChild(renderGroupChild) {
+        if (renderGroupChild.root.didChange) {
+          this._removeChildFromUpdate(renderGroupChild.root);
+        }
         const index = this.renderGroupChildren.indexOf(renderGroupChild);
         if (index > -1) {
           this.renderGroupChildren.splice(index, 1);
@@ -3321,22 +3327,35 @@ Deprecated since v${version}`);
       }
       addChild(child) {
         this.structureDidChange = true;
-        child.parentRenderGroup = this;
-        child.updateTick = -1;
-        if (child.parent === this.root) {
-          child.relativeRenderGroupDepth = 1;
-        } else {
-          child.relativeRenderGroupDepth = child.parent.relativeRenderGroupDepth + 1;
+        if (child !== this.root) {
+          this._children.push(child);
+          child.updateTick = -1;
+          if (child.parent === this.root) {
+            child.relativeRenderGroupDepth = 1;
+          } else {
+            child.relativeRenderGroupDepth = child.parent.relativeRenderGroupDepth + 1;
+          }
         }
-        child.didChange = true;
-        this.onChildUpdate(child);
         if (child.renderGroup) {
-          this.addRenderGroupChild(child.renderGroup);
-          return;
+          if (child.renderGroup.root === child) {
+            this.addRenderGroupChild(child.renderGroup);
+            return;
+          }
+        } else {
+          child.renderGroup = this;
+          child.didChange = true;
         }
-        if (child._onRender)
-          this.addOnRender(child);
+        if (child._onRender) {
+          if (!child.isRenderGroupRoot) {
+            this.addOnRender(child);
+          } else if (child.renderGroup.root === child) {
+            this.addOnRender(child);
+          }
+        }
         const children = child.children;
+        if (!child.isRenderGroupRoot) {
+          this.onChildUpdate(child);
+        }
         for (let i = 0; i < children.length; i++) {
           this.addChild(children[i]);
         }
@@ -3344,23 +3363,27 @@ Deprecated since v${version}`);
       removeChild(child) {
         this.structureDidChange = true;
         if (child._onRender) {
-          if (!child.renderGroup) {
+          if (!child.isRenderGroupRoot) {
+            this.removeOnRender(child);
+          } else if (child.renderGroup.root === child) {
             this.removeOnRender(child);
           }
         }
-        child.parentRenderGroup = null;
-        if (child.renderGroup) {
+        if (child.renderGroup.root !== child) {
+          const children = child.children;
+          for (let i = 0; i < children.length; i++) {
+            this.removeChild(children[i]);
+          }
+          if (child.didChange) {
+            child.renderGroup._removeChildFromUpdate(child);
+          }
+          child.renderGroup = null;
+        } else {
           this._removeRenderGroupChild(child.renderGroup);
-          return;
         }
-        const children = child.children;
-        for (let i = 0; i < children.length; i++) {
-          this.removeChild(children[i]);
-        }
-      }
-      removeChildren(children) {
-        for (let i = 0; i < children.length; i++) {
-          this.removeChild(children[i]);
+        const index = this._children.indexOf(child);
+        if (index > -1) {
+          this._children.splice(index, 1);
         }
       }
       onChildUpdate(child) {
@@ -3383,6 +3406,17 @@ Deprecated since v${version}`);
       onChildViewUpdate(child) {
         this.childrenRenderablesToUpdate.list[this.childrenRenderablesToUpdate.index++] = child;
       }
+      _removeChildFromUpdate(child) {
+        const childrenToUpdate = this.childrenToUpdate[child.relativeRenderGroupDepth];
+        if (!childrenToUpdate) {
+          return;
+        }
+        const index = childrenToUpdate.list.indexOf(child);
+        if (index > -1) {
+          childrenToUpdate.list.splice(index, 1);
+        }
+        childrenToUpdate.index--;
+      }
       get isRenderable() {
         return this.root.localDisplayStatus === 7 && this.worldAlpha > 0;
       }
@@ -3401,23 +3435,6 @@ Deprecated since v${version}`);
         for (let i = 0; i < this._onRenderContainers.length; i++) {
           this._onRenderContainers[i]._onRender();
         }
-      }
-      getChildren(out = []) {
-        const children = this.root.children;
-        for (let i = 0; i < children.length; i++) {
-          this._getChildren(children[i], out);
-        }
-        return out;
-      }
-      _getChildren(container, out = []) {
-        out.push(container);
-        if (container.renderGroup)
-          return out;
-        const children = container.children;
-        for (let i = 0; i < children.length; i++) {
-          this._getChildren(children[i], out);
-        }
-        return out;
       }
     }
 
@@ -3446,15 +3463,13 @@ Deprecated since v${version}`);
         this.uid = uid("renderable");
         /** @private */
         this._updateFlags = 15;
-        // the render group this container owns
+        // is this container the root of a renderGroup?
+        // TODO implement this in a few more places
+        /** @private */
+        this.isRenderGroupRoot = false;
+        // the render group this container belongs to OR owns
         /** @private */
         this.renderGroup = null;
-        // the render group this container belongs to
-        /** @private */
-        this.parentRenderGroup = null;
-        // the index of the container in the render group
-        /** @private */
-        this.parentRenderGroupIndex = 0;
         // set to true if the container has changed. It is reset once the changes have been applied
         // by the transform system
         // its here to stop ensure that when things change, only one update gets registers with the transform system
@@ -3665,8 +3680,8 @@ Deprecated since v${version}`);
         if (child.parent === this) {
           this.children.splice(this.children.indexOf(child), 1);
           this.children.push(child);
-          if (this.parentRenderGroup) {
-            this.parentRenderGroup.structureDidChange = true;
+          if (this.renderGroup && !this.isRenderGroupRoot) {
+            this.renderGroup.structureDidChange = true;
           }
           return child;
         }
@@ -3680,9 +3695,8 @@ Deprecated since v${version}`);
         child.didChange = true;
         child.didViewUpdate = false;
         child._updateFlags = 15;
-        const renderGroup = this.renderGroup || this.parentRenderGroup;
-        if (renderGroup) {
-          renderGroup.addChild(child);
+        if (this.renderGroup) {
+          this.renderGroup.addChild(child);
         }
         this.emit("childAdded", child, this, this.children.length - 1);
         child.emit("added", this);
@@ -3711,8 +3725,6 @@ Deprecated since v${version}`);
           this.children.splice(index, 1);
           if (this.renderGroup) {
             this.renderGroup.removeChild(child);
-          } else if (this.parentRenderGroup) {
-            this.parentRenderGroup.removeChild(child);
           }
           child.parent = null;
           this.emit("childRemoved", child, this, index);
@@ -3731,12 +3743,17 @@ Deprecated since v${version}`);
         if (this.didChange)
           return;
         this.didChange = true;
-        if (this.parentRenderGroup) {
-          this.parentRenderGroup.onChildUpdate(this);
+        if (this.isRenderGroupRoot) {
+          const renderGroupParent = this.renderGroup.renderGroupParent;
+          if (renderGroupParent) {
+            renderGroupParent.onChildUpdate(this);
+          }
+        } else if (this.renderGroup) {
+          this.renderGroup.onChildUpdate(this);
         }
       }
       set isRenderGroup(value) {
-        if (this.renderGroup && value === false) {
+        if (this.isRenderGroupRoot && value === false) {
           throw new Error("[Pixi] cannot undo a render group just yet");
         }
         if (value) {
@@ -3748,26 +3765,38 @@ Deprecated since v${version}`);
        * This means that it will be rendered as a separate pass, with its own set of instructions
        */
       get isRenderGroup() {
-        return !!this.renderGroup;
+        return this.isRenderGroupRoot;
       }
       /** This enables the container to be rendered as a render group. */
       enableRenderGroup() {
-        if (this.renderGroup)
+        if (this.renderGroup && this.renderGroup.root === this)
           return;
-        const parentRenderGroup = this.parentRenderGroup;
+        this.isRenderGroupRoot = true;
+        const parentRenderGroup = this.renderGroup;
         if (parentRenderGroup) {
           parentRenderGroup.removeChild(this);
         }
         this.renderGroup = new RenderGroup(this);
         if (parentRenderGroup) {
-          parentRenderGroup.addChild(this);
+          for (let i = 0; i < parentRenderGroup.renderGroupChildren.length; i++) {
+            const childRenderGroup = parentRenderGroup.renderGroupChildren[i];
+            let parent = childRenderGroup.root;
+            while (parent) {
+              if (parent === this) {
+                this.renderGroup.addRenderGroupChild(childRenderGroup);
+                break;
+              }
+              parent = parent.parent;
+            }
+          }
+          parentRenderGroup.addRenderGroupChild(this.renderGroup);
         }
         this._updateIsSimple();
         this.groupTransform = Matrix.IDENTITY;
       }
       /** @ignore */
       _updateIsSimple() {
-        this.isSimple = !this.renderGroup && this.effects.length === 0;
+        this.isSimple = !this.isRenderGroupRoot && this.effects.length === 0;
       }
       /**
        * Current transform of the object based on world (parent) factors.
@@ -3776,9 +3805,11 @@ Deprecated since v${version}`);
       get worldTransform() {
         this._worldTransform || (this._worldTransform = new Matrix());
         if (this.renderGroup) {
-          this._worldTransform.copyFrom(this.renderGroup.worldTransform);
-        } else if (this.parentRenderGroup) {
-          this._worldTransform.appendFrom(this.relativeGroupTransform, this.parentRenderGroup.worldTransform);
+          if (this.isRenderGroupRoot) {
+            this._worldTransform.copyFrom(this.renderGroup.worldTransform);
+          } else {
+            this._worldTransform.appendFrom(this.relativeGroupTransform, this.renderGroup.worldTransform);
+          }
         }
         return this._worldTransform;
       }
@@ -4057,8 +4088,8 @@ Deprecated since v${version}`);
       set blendMode(value) {
         if (this.localBlendMode === value)
           return;
-        if (this.parentRenderGroup) {
-          this.parentRenderGroup.structureDidChange = true;
+        if (this.renderGroup && !this.isRenderGroupRoot) {
+          this.renderGroup.structureDidChange = true;
         }
         this._updateFlags |= UPDATE_BLEND;
         this.localBlendMode = value;
@@ -4080,8 +4111,8 @@ Deprecated since v${version}`);
         const valueNumber = value ? 1 : 0;
         if ((this.localDisplayStatus & 2) >> 1 === valueNumber)
           return;
-        if (this.parentRenderGroup) {
-          this.parentRenderGroup.structureDidChange = true;
+        if (this.renderGroup && !this.isRenderGroupRoot) {
+          this.renderGroup.structureDidChange = true;
         }
         this._updateFlags |= UPDATE_VISIBLE;
         this.localDisplayStatus ^= 2;
@@ -4096,8 +4127,8 @@ Deprecated since v${version}`);
         const valueNumber = value ? 1 : 0;
         if ((this.localDisplayStatus & 4) >> 2 === valueNumber)
           return;
-        if (this.parentRenderGroup) {
-          this.parentRenderGroup.structureDidChange = true;
+        if (this.renderGroup && !this.isRenderGroupRoot) {
+          this.renderGroup.structureDidChange = true;
         }
         this._updateFlags |= UPDATE_VISIBLE;
         this.localDisplayStatus ^= 4;
@@ -4113,8 +4144,8 @@ Deprecated since v${version}`);
           return;
         this._updateFlags |= UPDATE_VISIBLE;
         this.localDisplayStatus ^= 1;
-        if (this.parentRenderGroup) {
-          this.parentRenderGroup.structureDidChange = true;
+        if (this.renderGroup && !this.isRenderGroupRoot) {
+          this.renderGroup.structureDidChange = true;
         }
         this._onUpdate();
       }
@@ -4140,11 +4171,10 @@ Deprecated since v${version}`);
         if (this.destroyed)
           return;
         this.destroyed = true;
-        const oldChildren = this.removeChildren(0, this.children.length);
         this.removeFromParent();
         this.parent = null;
-        this._maskEffect = null;
-        this._filterEffect = null;
+        this._mask = null;
+        this._filters = null;
         this.effects = null;
         this._position = null;
         this._scale = null;
@@ -4153,6 +4183,7 @@ Deprecated since v${version}`);
         this.emit("destroyed", this);
         this.removeAllListeners();
         const destroyChildren = typeof options === "boolean" ? options : options == null ? void 0 : options.children;
+        const oldChildren = this.removeChildren(0, this.children.length);
         if (destroyChildren) {
           for (let i = 0; i < oldChildren.length; ++i) {
             oldChildren[i].destroy(options);
@@ -6103,7 +6134,7 @@ Deprecated since v${version}`);
         return int === "static" || int === "dynamic";
       }
       _interactivePrune(container) {
-        if (!container || !container.visible || !container.renderable || !container.includeInBuild || !container.measurable) {
+        if (!container || !container.visible || !container.renderable) {
           return true;
         }
         if (container.eventMode === "none") {
@@ -6118,7 +6149,7 @@ Deprecated since v${version}`);
        * Checks whether the container or any of its children cannot pass the hit test at all.
        *
        * {@link EventBoundary}'s implementation uses the {@link Container.hitArea hitArea}
-       * and {@link Container._maskEffect} for pruning.
+       * and {@link Container._mask} for pruning.
        * @param container - The container to prune.
        * @param location - The location to test for overlap.
        */
@@ -10328,7 +10359,7 @@ Deprecated since v${version}`);
         if (options instanceof Texture) {
           options = { texture: options };
         }
-        const _a = options, { texture = Texture.EMPTY, anchor, roundPixels, width, height } = _a, rest = __objRest$h(_a, ["texture", "anchor", "roundPixels", "width", "height"]);
+        const _a = options, { texture, anchor, roundPixels, width, height } = _a, rest = __objRest$h(_a, ["texture", "anchor", "roundPixels", "width", "height"]);
         super(__spreadValues$V({
           label: "Sprite"
         }, rest));
@@ -10439,9 +10470,8 @@ Deprecated since v${version}`);
         if (this.didViewUpdate)
           return;
         this.didViewUpdate = true;
-        const renderGroup = this.renderGroup || this.parentRenderGroup;
-        if (renderGroup) {
-          renderGroup.onChildViewUpdate(this);
+        if (this.renderGroup) {
+          this.renderGroup.onChildViewUpdate(this);
         }
       }
       _updateBounds() {
@@ -11781,24 +11811,7 @@ Deprecated since v${version}`);
     }
 
     "use strict";
-    let context;
-    function getTestContext() {
-      if (!context || (context == null ? void 0 : context.isContextLost())) {
-        const canvas = DOMAdapter.get().createCanvas();
-        context = canvas.getContext("webgl", {});
-      }
-      return context;
-    }
-
-    "use strict";
-    let maxRecommendedTexturesCache = null;
-    function maxRecommendedTextures() {
-      if (maxRecommendedTexturesCache)
-        return maxRecommendedTexturesCache;
-      const gl = getTestContext();
-      maxRecommendedTexturesCache = gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS);
-      return maxRecommendedTexturesCache;
-    }
+    const MAX_TEXTURES = 16;
 
     "use strict";
     const cachedGroups = {};
@@ -11809,13 +11822,10 @@ Deprecated since v${version}`);
       }
       return cachedGroups[uid] || generateTextureBatchBindGroup(textures, uid);
     }
-    let maxTextures = 0;
     function generateTextureBatchBindGroup(textures, key) {
       const bindGroupResources = {};
       let bindIndex = 0;
-      if (!maxTextures)
-        maxTextures = maxRecommendedTextures();
-      for (let i = 0; i < maxTextures; i++) {
+      for (let i = 0; i < MAX_TEXTURES; i++) {
         const texture = i < textures.length ? textures[i] : Texture.EMPTY.source;
         bindGroupResources[bindIndex++] = texture.source;
         bindGroupResources[bindIndex++] = texture.style;
@@ -12036,7 +12046,6 @@ Deprecated since v${version}`);
         const { vertexSize, indexSize } = options;
         this.attributeBuffer = new ViewableBuffer(vertexSize * this._vertexSize * 4);
         this.indexBuffer = new Uint16Array(indexSize);
-        this._maxTextures = maxRecommendedTextures();
       }
       begin() {
         this.batchIndex = 0;
@@ -12101,7 +12110,6 @@ Deprecated since v${version}`);
         let start = this._batchIndexStart;
         let action = "startBatch";
         let batch = this._batchPool[this._batchPoolIndex++] || new Batch();
-        const maxTextures = this._maxTextures;
         for (let i = this.elementStart; i < this.elementSize; ++i) {
           const element = elements[i];
           elements[i] = null;
@@ -12118,7 +12126,7 @@ Deprecated since v${version}`);
             continue;
           }
           source._batchTick = BATCH_TICK;
-          if (textureBatch.count >= maxTextures || blendModeChange) {
+          if (textureBatch.count >= MAX_TEXTURES || blendModeChange) {
             this._finishBatch(
               batch,
               start,
@@ -13870,6 +13878,7 @@ Deprecated since v${version}`);
         this._gpuContextHash = {};
         // used for non-batchable graphics
         this._graphicsDataContextHash = /* @__PURE__ */ Object.create(null);
+        this._needsContextNeedsRebuild = [];
       }
       /**
        * Runner init called, update the default options
@@ -13945,13 +13954,17 @@ Deprecated since v${version}`);
       }
       _initContext(context) {
         const gpuContext = new GpuGraphicsContext();
-        gpuContext.context = context;
         this._gpuContextHash[context.uid] = gpuContext;
+        context.on("update", this.onGraphicsContextUpdate, this);
         context.on("destroy", this.onGraphicsContextDestroy, this);
         return this._gpuContextHash[context.uid];
       }
+      onGraphicsContextUpdate(context) {
+        this._needsContextNeedsRebuild.push(context);
+      }
       onGraphicsContextDestroy(context) {
         this._cleanGraphicsContextData(context);
+        context.off("update", this.onGraphicsContextUpdate, this);
         context.off("destroy", this.onGraphicsContextDestroy, this);
         this._gpuContextHash[context.uid] = null;
       }
@@ -13970,11 +13983,12 @@ Deprecated since v${version}`);
         }
       }
       destroy() {
-        for (const i in this._gpuContextHash) {
-          if (this._gpuContextHash[i]) {
-            this.onGraphicsContextDestroy(this._gpuContextHash[i].context);
+        for (const context of this._needsContextNeedsRebuild) {
+          if (this._gpuContextHash[context.uid]) {
+            this.onGraphicsContextDestroy(context);
           }
         }
+        this._needsContextNeedsRebuild.length = 0;
       }
     };
     /** @ignore */
@@ -14265,12 +14279,10 @@ Deprecated since v${version}`);
           batchClone.roundPixels = roundPixels;
           return batchClone;
         });
-        if (this._graphicsBatchesHash[graphics.uid] === void 0) {
-          graphics.on("destroyed", () => {
-            this.destroyRenderable(graphics);
-          });
-        }
         this._graphicsBatchesHash[graphics.uid] = batches;
+        graphics.on("destroyed", () => {
+          this.destroyRenderable(graphics);
+        });
         return batches;
       }
       _removeBatchForRenderable(graphicsUid) {
@@ -14317,28 +14329,6 @@ Deprecated since v${version}`);
       }
       return id;
     }
-
-    "use strict";
-    const UNIFORM_TYPES_VALUES = [
-      "f32",
-      "i32",
-      "vec2<f32>",
-      "vec3<f32>",
-      "vec4<f32>",
-      "mat2x2<f32>",
-      "mat3x3<f32>",
-      "mat4x4<f32>",
-      "mat3x2<f32>",
-      "mat4x2<f32>",
-      "mat2x3<f32>",
-      "mat4x3<f32>",
-      "mat2x4<f32>",
-      "mat3x4<f32>"
-    ];
-    const UNIFORM_TYPES_MAP = UNIFORM_TYPES_VALUES.reduce((acc, type) => {
-      acc[type] = true;
-      return acc;
-    }, {});
 
     "use strict";
     function getDefaultUniformValue(type, size) {
@@ -14443,9 +14433,6 @@ Deprecated since v${version}`);
           const uniformData = uniformStructures[i];
           uniformData.name = i;
           uniformData.size = (_a = uniformData.size) != null ? _a : 1;
-          if (!UNIFORM_TYPES_MAP[uniformData.type]) {
-            throw new Error(`Uniform type ${uniformData.type} is not supported. Supported uniform types are: ${UNIFORM_TYPES_VALUES.join(", ")}`);
-          }
           (_b = uniformData.value) != null ? _b : uniformData.value = getDefaultUniformValue(uniformData.type, uniformData.size);
           uniforms[i] = uniformData.value;
         }
@@ -18376,7 +18363,6 @@ Deprecated since v${version}`);
        * @returns The instance of the current GraphicsContext for method chaining.
        */
       clear() {
-        this._activePath.clear();
         this.instructions.length = 0;
         this.resetTransform();
         this.onUpdate();
@@ -20490,7 +20476,7 @@ Deprecated since v${version}`);
        */
       getLayout(text, style) {
         const bitmapFont = this.getFont(text, style);
-        return getBitmapTextLayout([...text], style, bitmapFont);
+        return getBitmapTextLayout(text.split(""), style, bitmapFont);
       }
       /**
        * Measure the text using the specified style.
@@ -20978,9 +20964,8 @@ Deprecated since v${version}`);
         if (this.didViewUpdate)
           return;
         this.didViewUpdate = true;
-        const renderGroup = this.renderGroup || this.parentRenderGroup;
-        if (renderGroup) {
-          renderGroup.onChildViewUpdate(this);
+        if (this.renderGroup) {
+          this.renderGroup.onChildViewUpdate(this);
         }
       }
       /**
@@ -21303,6 +21288,16 @@ Deprecated since v${version}`);
         deprecation(v8_0_0, "Graphics#drawStar has been renamed to Graphics#star");
         return this._callContextMethod("star", args);
       }
+    }
+
+    "use strict";
+    let context;
+    function getTestContext() {
+      if (!context || (context == null ? void 0 : context.isContextLost())) {
+        const canvas = DOMAdapter.get().createCanvas();
+        context = canvas.getContext("webgl", {});
+      }
+      return context;
     }
 
     "use strict";
@@ -22288,13 +22283,13 @@ ${parts.join("\n")}
             header: `
                 @in @interpolate(flat) vTextureId: u32;
     
-                ${generateBindingSrc(maxRecommendedTextures())}
+                ${generateBindingSrc(16)}
             `,
             main: `
                 var uvDx = dpdx(vUV);
                 var uvDy = dpdy(vUV);
     
-                ${generateSampleSrc(maxRecommendedTextures())}
+                ${generateSampleSrc(16)}
             `
           }
         };
@@ -22346,7 +22341,7 @@ ${parts.join("\n")}
             `,
             main: `
     
-                ${generateSampleGlSrc(maxRecommendedTextures())}
+                ${generateSampleGlSrc(16)}
             `
           }
         };
@@ -22385,20 +22380,13 @@ ${parts.join("\n")}
     };
 
     "use strict";
-    const batchSamplersUniformGroupHash = {};
-    function getBatchSamplersUniformGroup(maxTextures) {
-      let batchSamplersUniformGroup = batchSamplersUniformGroupHash[maxTextures];
-      if (batchSamplersUniformGroup)
-        return batchSamplersUniformGroup;
-      const sampleValues = new Int32Array(maxTextures);
-      for (let i = 0; i < maxTextures; i++) {
-        sampleValues[i] = i;
-      }
-      batchSamplersUniformGroup = batchSamplersUniformGroupHash[maxTextures] = new UniformGroup({
-        uTextures: { value: sampleValues, type: `i32`, size: maxTextures }
-      }, { isStatic: true });
-      return batchSamplersUniformGroup;
+    const sampleValues = new Int32Array(MAX_TEXTURES);
+    for (let i = 0; i < MAX_TEXTURES; i++) {
+      sampleValues[i] = i;
     }
+    const batchSamplersUniformGroup = new UniformGroup({
+      uTextures: { value: sampleValues, type: `i32`, size: MAX_TEXTURES }
+    }, { isStatic: true });
 
     "use strict";
     var RendererType = /* @__PURE__ */ ((RendererType2) => {
@@ -22780,12 +22768,11 @@ ${parts.join("\n")}
           uDistance: { value: 4, type: "f32" },
           uRound: { value: 0, type: "f32" }
         });
-        const maxTextures = maxRecommendedTextures();
         const gpuProgram = compileHighShaderGpuProgram({
           name: "sdf-shader",
           bits: [
             colorBit,
-            generateTextureBatchBit(maxTextures),
+            generateTextureBatchBit(MAX_TEXTURES),
             localUniformMSDFBit,
             mSDFBit,
             roundPixelsBit
@@ -22795,7 +22782,7 @@ ${parts.join("\n")}
           name: "sdf-shader",
           bits: [
             colorBitGl,
-            generateTextureBatchBitGl(maxTextures),
+            generateTextureBatchBitGl(MAX_TEXTURES),
             localUniformMSDFBitGl,
             mSDFBitGl,
             roundPixelsBitGl
@@ -22806,7 +22793,7 @@ ${parts.join("\n")}
           gpuProgram,
           resources: {
             localUniforms: uniforms,
-            batchSamplers: getBatchSamplersUniformGroup(maxTextures)
+            batchSamplers: batchSamplersUniformGroup
           }
         });
       }
@@ -24443,8 +24430,8 @@ ${parts.join("\n")}
       if (!bounds.isValid) {
         bounds.set(0, 0, 0, 0);
       }
-      if (!target.renderGroup) {
-        bounds.applyMatrix(target.parentRenderGroup.worldTransform);
+      if (!target.isRenderGroupRoot) {
+        bounds.applyMatrix(target.renderGroup.worldTransform);
       } else {
         bounds.applyMatrix(target.renderGroup.localTransform);
       }
@@ -24456,7 +24443,7 @@ ${parts.join("\n")}
       }
       const manageEffects = !!target.effects.length;
       let localBounds = bounds;
-      if (target.renderGroup || manageEffects) {
+      if (target.isRenderGroupRoot || manageEffects) {
         localBounds = boundsPool.get().clear();
       }
       if (target.boundsArea) {
@@ -24483,18 +24470,18 @@ ${parts.join("\n")}
           if (target.effects[i].addBounds) {
             if (!advanced) {
               advanced = true;
-              localBounds.applyMatrix(target.parentRenderGroup.worldTransform);
+              localBounds.applyMatrix(target.renderGroup.worldTransform);
             }
             target.effects[i].addBounds(localBounds, true);
           }
         }
         if (advanced) {
-          localBounds.applyMatrix(target.parentRenderGroup.worldTransform.copyTo(tempMatrix$1).invert());
+          localBounds.applyMatrix(target.renderGroup.worldTransform.copyTo(tempMatrix$1).invert());
           bounds.addBounds(localBounds, target.relativeGroupTransform);
         }
         bounds.addBounds(localBounds);
         boundsPool.return(localBounds);
-      } else if (target.renderGroup) {
+      } else if (target.isRenderGroupRoot) {
         bounds.addBounds(localBounds, target.relativeGroupTransform);
         boundsPool.return(localBounds);
       }
@@ -28773,8 +28760,6 @@ ${e}`);
     "use strict";
 
     "use strict";
-
-    "use strict";
     var __defProp$v = Object.defineProperty;
     var __getOwnPropSymbols$v = Object.getOwnPropertySymbols;
     var __hasOwnProp$v = Object.prototype.hasOwnProperty;
@@ -31212,9 +31197,8 @@ ${e}`);
         if (this.didViewUpdate)
           return;
         this.didViewUpdate = true;
-        const renderGroup = this.renderGroup || this.parentRenderGroup;
-        if (renderGroup) {
-          renderGroup.onChildViewUpdate(this);
+        if (this.renderGroup) {
+          this.renderGroup.onChildViewUpdate(this);
         }
       }
       /**
@@ -31623,13 +31607,7 @@ ${e}`);
         this._bounds = { minX: 0, maxX: 1, minY: 0, maxY: 0 };
         this._boundsDirty = true;
         this.allowChildren = false;
-        this._anchor = new ObservablePoint(
-          {
-            _onUpdate: () => {
-              this.onViewUpdate();
-            }
-          }
-        );
+        this._anchor = new ObservablePoint(this);
         this._applyAnchorToTexture = applyAnchorToTexture;
         this.texture = texture;
         this._width = width != null ? width : texture.width;
@@ -31821,9 +31799,8 @@ ${e}`);
         if (this.didViewUpdate)
           return;
         this.didViewUpdate = true;
-        const renderGroup = this.renderGroup || this.parentRenderGroup;
-        if (renderGroup) {
-          renderGroup.onChildViewUpdate(this);
+        if (this.renderGroup) {
+          this.renderGroup.onChildViewUpdate(this);
         }
       }
       /**
@@ -32097,9 +32074,8 @@ ${e}`);
           return;
         this.didViewUpdate = true;
         this._didTextUpdate = true;
-        const renderGroup = this.renderGroup || this.parentRenderGroup;
-        if (renderGroup) {
-          renderGroup.onChildViewUpdate(this);
+        if (this.renderGroup) {
+          this.renderGroup.onChildViewUpdate(this);
         }
       }
       _getKey() {
@@ -32155,9 +32131,9 @@ ${e}`);
         );
         const { width, height } = canvasMeasurement;
         bounds.minX = -anchor._x * width - padding;
-        bounds.maxX = bounds.minX + width + padding * 2;
+        bounds.maxX = bounds.minX + width;
         bounds.minY = -anchor._y * height - padding;
-        bounds.maxY = bounds.minY + height + padding * 2;
+        bounds.maxY = bounds.minY + height;
       }
     }
 
@@ -32345,19 +32321,18 @@ ${e}`);
         this._tempState = State.for2d();
       }
       init(batcherPipe) {
-        const maxTextures = maxRecommendedTextures();
         const glProgram = compileHighShaderGlProgram({
           name: "batch",
           bits: [
             colorBitGl,
-            generateTextureBatchBitGl(maxTextures),
+            generateTextureBatchBitGl(MAX_TEXTURES),
             roundPixelsBitGl
           ]
         });
         this._shader = new Shader({
           glProgram,
           resources: {
-            batchSamplers: getBatchSamplersUniformGroup(maxTextures)
+            batchSamplers: batchSamplersUniformGroup
           }
         });
         batcherPipe.renderer.runners.contextChange.add(this);
@@ -32441,7 +32416,7 @@ ${e}`);
           name: "batch",
           bits: [
             colorBit,
-            generateTextureBatchBit(maxRecommendedTextures()),
+            generateTextureBatchBit(MAX_TEXTURES),
             roundPixelsBit
           ]
         });
@@ -32706,7 +32681,7 @@ ${e}`);
         const rp = renderPipes;
         rp[container.renderPipeId].addRenderable(container, instructionSet);
       }
-      if (!container.renderGroup) {
+      if (!container.isRenderGroupRoot) {
         const children = container.children;
         const length = children.length;
         for (let i = 0; i < length; i++) {
@@ -32715,7 +32690,7 @@ ${e}`);
       }
     }
     function collectAllRenderablesAdvanced(container, instructionSet, renderPipes, isRoot) {
-      if (!isRoot && container.renderGroup) {
+      if (!isRoot && container.isRenderGroupRoot) {
         renderPipes.renderGroup.addRenderGroup(container.renderGroup, instructionSet);
       } else {
         for (let i = 0; i < container.effects.length; i++) {
@@ -32748,10 +32723,11 @@ ${e}`);
     const tempBounds$1 = new Bounds();
     class AlphaMaskEffect extends FilterEffect {
       constructor() {
-        super();
-        this.filters = [new MaskFilter({
-          sprite: new Sprite(Texture.EMPTY)
-        })];
+        super({
+          filters: [new MaskFilter({
+            sprite: new Sprite(Texture.EMPTY)
+          })]
+        });
       }
       get sprite() {
         return this.filters[0].sprite;
@@ -35412,7 +35388,7 @@ ${e}`);
       _initRenderTarget(renderSurface) {
         let renderTarget = null;
         if (CanvasSource.test(renderSurface)) {
-          renderSurface = getCanvasTexture(renderSurface).source;
+          renderSurface = getCanvasTexture(renderSurface);
         }
         if (renderSurface instanceof RenderTarget) {
           renderTarget = renderSurface;
@@ -36603,7 +36579,7 @@ ${e}`);
 
     "use strict";
     const glUploadBufferImageResource = {
-      id: "buffer",
+      id: "image",
       upload(source, glTexture, gl) {
         if (glTexture.width === source.width || glTexture.height === source.height) {
           gl.texSubImage2D(
@@ -36611,8 +36587,6 @@ ${e}`);
             0,
             0,
             0,
-            source.width,
-            source.height,
             glTexture.format,
             glTexture.type,
             source.resource
@@ -37435,12 +37409,11 @@ ${e}`);
           uTransformMatrix: { value: new Matrix(), type: "mat3x3<f32>" },
           uRound: { value: 0, type: "f32" }
         });
-        const maxTextures = maxRecommendedTextures();
         const glProgram = compileHighShaderGlProgram({
           name: "graphics",
           bits: [
             colorBitGl,
-            generateTextureBatchBitGl(maxTextures),
+            generateTextureBatchBitGl(MAX_TEXTURES),
             localUniformBitGl,
             roundPixelsBitGl
           ]
@@ -37449,7 +37422,7 @@ ${e}`);
           glProgram,
           resources: {
             localUniforms: uniforms,
-            batchSamplers: getBatchSamplersUniformGroup(maxTextures)
+            batchSamplers: batchSamplersUniformGroup
           }
         });
       }
@@ -37664,16 +37637,14 @@ ${e}`);
     function updateRenderGroupTransforms(renderGroup, updateChildRenderGroups = false) {
       updateRenderGroupTransform(renderGroup);
       const childrenToUpdate = renderGroup.childrenToUpdate;
-      const updateTick = renderGroup.updateTick++;
+      const updateTick = renderGroup.updateTick;
+      renderGroup.updateTick++;
       for (const j in childrenToUpdate) {
         const childrenAtDepth = childrenToUpdate[j];
         const list = childrenAtDepth.list;
         const index = childrenAtDepth.index;
         for (let i = 0; i < index; i++) {
-          const child = list[i];
-          if (child.parentRenderGroup === renderGroup) {
-            updateTransformAndChildren(child, updateTick, 0);
-          }
+          updateTransformAndChildren(list[i], updateTick, 0);
         }
         childrenAtDepth.index = 0;
       }
@@ -37714,7 +37685,7 @@ ${e}`);
       const localTransform = container.localTransform;
       container.updateLocalTransform();
       const parent = container.parent;
-      if (parent && !parent.renderGroup) {
+      if (parent && !parent.isRenderGroupRoot) {
         updateFlags = updateFlags | container._updateFlags;
         container.relativeGroupTransform.appendFrom(
           localTransform,
@@ -37730,13 +37701,13 @@ ${e}`);
           updateColorBlendVisibility(container, tempContainer, updateFlags);
         }
       }
-      if (!container.renderGroup) {
+      if (!container.isRenderGroupRoot) {
         const children = container.children;
         const length = children.length;
         for (let i = 0; i < length; i++) {
           updateTransformAndChildren(children[i], updateTick, updateFlags);
         }
-        const renderGroup = container.parentRenderGroup;
+        const renderGroup = container.renderGroup;
         if (container.renderPipeId && !renderGroup.structureDidChange) {
           renderGroup.updateRenderable(container);
         }
@@ -38059,16 +38030,16 @@ ${e}`);
           warn(`Unable to assign BlendMode: '${blendMode}'. You may want to include: import 'pixi.js/advanced-blend-modes'`);
           return;
         }
-        let filterEffect = this._filterHash[blendMode];
-        if (!filterEffect) {
-          filterEffect = this._filterHash[blendMode] = new FilterEffect();
-          filterEffect.filters = [new BLEND_MODE_FILTERS[blendMode]()];
+        if (!this._filterHash[blendMode]) {
+          this._filterHash[blendMode] = new FilterEffect({
+            filters: [new BLEND_MODE_FILTERS[blendMode]()]
+          });
         }
         const instruction = {
           renderPipeId: "filter",
           action: "pushFilter",
           renderables: [],
-          filterEffect,
+          filterEffect: this._filterHash[blendMode],
           canBundle: false
         };
         this._renderableList = instruction.renderables;
@@ -38537,7 +38508,7 @@ ${e}`);
 
     "use strict";
     let saidHello = false;
-    const VERSION = "8.1.5";
+    const VERSION = "8.1.1";
     function sayHello(type) {
       if (saidHello) {
         return;
@@ -40764,7 +40735,7 @@ ${e}`);
           name: "graphics",
           bits: [
             colorBit,
-            generateTextureBatchBit(maxRecommendedTextures()),
+            generateTextureBatchBit(MAX_TEXTURES),
             localUniformBitGroup2,
             roundPixelsBit
           ]
@@ -40964,6 +40935,8 @@ ${e}`);
       viewport.height = frame.height * pixelHeight | 0;
       return viewport;
     }
+
+    "use strict";
 
     "use strict";
 
@@ -41812,9 +41785,8 @@ ${e}`);
         if (this.didViewUpdate)
           return;
         this.didViewUpdate = true;
-        const renderGroup = this.renderGroup || this.parentRenderGroup;
-        if (renderGroup) {
-          renderGroup.onChildViewUpdate(this);
+        if (this.renderGroup) {
+          this.renderGroup.onChildViewUpdate(this);
         }
       }
       /**
@@ -41956,7 +41928,7 @@ ${e}`);
     ];
     let colorTick = 0;
     function logScene(container, depth = 0, data = { color: "#000000" }) {
-      if (container.renderGroup) {
+      if (container.isRenderGroupRoot) {
         data.color = colors[colorTick++];
       }
       let spaces = "";
@@ -41968,7 +41940,7 @@ ${e}`);
         label = `sprite:${container.texture.label}`;
       }
       let output = `%c ${spaces}|- ${label} (worldX:${container.worldTransform.tx}, relativeRenderX:${container.relativeGroupTransform.tx}, renderX:${container.groupTransform.tx}, localX:${container.x})`;
-      if (container.renderGroup) {
+      if (container.isRenderGroupRoot) {
         output += " (RenderGroup)";
       }
       if (container.filters) {
@@ -42160,6 +42132,7 @@ ${e}`);
     exports.KTX = KTX;
     exports.Loader = Loader;
     exports.LoaderParserPriority = LoaderParserPriority;
+    exports.MAX_TEXTURES = MAX_TEXTURES;
     exports.MSAA_QUALITY = MSAA_QUALITY;
     exports.MaskEffectManager = MaskEffectManager;
     exports.MaskEffectManagerClass = MaskEffectManagerClass;
@@ -42243,8 +42216,6 @@ ${e}`);
     exports.Triangle = Triangle;
     exports.UNIFORM_TO_ARRAY_SETTERS = UNIFORM_TO_ARRAY_SETTERS;
     exports.UNIFORM_TO_SINGLE_SETTERS = UNIFORM_TO_SINGLE_SETTERS;
-    exports.UNIFORM_TYPES_MAP = UNIFORM_TYPES_MAP;
-    exports.UNIFORM_TYPES_VALUES = UNIFORM_TYPES_VALUES;
     exports.UPDATE_BLEND = UPDATE_BLEND;
     exports.UPDATE_COLOR = UPDATE_COLOR;
     exports.UPDATE_PRIORITY = UPDATE_PRIORITY;
@@ -42279,6 +42250,7 @@ ${e}`);
     exports.autoDetectRenderer = autoDetectRenderer;
     exports.autoDetectSource = autoDetectSource;
     exports.basisTranscoderUrls = basisTranscoderUrls;
+    exports.batchSamplersUniformGroup = batchSamplersUniformGroup;
     exports.bitmapFontCachePlugin = bitmapFontCachePlugin;
     exports.bitmapFontTextParser = bitmapFontTextParser;
     exports.bitmapFontXMLParser = bitmapFontXMLParser;
@@ -42402,7 +42374,6 @@ ${e}`);
     exports.generateUniformsSync = generateUniformsSync;
     exports.getAdjustedBlendModeBlend = getAdjustedBlendModeBlend;
     exports.getAttributeInfoFromFormat = getAttributeInfoFromFormat;
-    exports.getBatchSamplersUniformGroup = getBatchSamplersUniformGroup;
     exports.getBitmapTextLayout = getBitmapTextLayout;
     exports.getCanvasBoundingBox = getCanvasBoundingBox;
     exports.getCanvasFillStyle = getCanvasFillStyle;
@@ -42504,7 +42475,6 @@ ${e}`);
     exports.maskVert = vertex;
     exports.maskWgsl = source;
     exports.matrixPool = matrixPool;
-    exports.maxRecommendedTextures = maxRecommendedTextures;
     exports.measureHtmlText = measureHtmlText;
     exports.measureMixin = measureMixin;
     exports.migrateFragmentFromV7toV8 = migrateFragmentFromV7toV8;

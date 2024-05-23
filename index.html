@@ -1,26 +1,88 @@
 <!DOCTYPE html>
-<html lang="en">
 <head>
-    <script src="pixi.js"></script>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UnderTarots</title>
+    <title>Pong</title>
+    <script src="../pixi.js"></script>
+    <!--<script src="js/index.js"></script>-->
 </head>
-<body>
+<body style="margin: 0;">
     <script type="module">
-        const width = window.width, height = window.height;
+        class Carta {
+            
+            constructor(numero, girato){
+                this.numero = numero;
+                this.girato = girato;
+            }
+            getNumero() {
+                return this.numero;
+            }
+            getDir() { 
+                return 'Assets/Cards/' + this.numero + '.png';
+            }
+            getGirato() {
+                return this.girato;
+            }
+        }
+
+        const nCard = 12;
+        const width = window.innerWidth, height = window.innerHeight - 5;
+        
         const app = new PIXI.Application();
         await app.init({ width: width, height: height });
         document.body.appendChild(app.canvas);
-        
-        await PIXI.Assets.load("Assets/Background/snowdin.png");
-        let bg = PIXI.Sprite.from("Assets/Background/snowdin.png");
-        app.stage.addChild(bg);
 
-        for(let i = 0; i < 24; i++) {
-            await PIXI.Assets.load("Assets/Cards/" + i + ".png")
+        await PIXI.Assets.load('Assets/Background/snowdin.png');
+        let bg = PIXI.Sprite.from('Assets/Background/snowdin.png');
+        bg.width = width;
+        bg.height = height;
+        app.stage.addChild(bg);
+        for(let i=0; i < 24; i++){
+            await PIXI.Assets.load('Assets/Cards/' + i + ".png");
         }
         
+        const cards = [];
+        for(let i=0; i < nCard; i++){
+            cards.push(PIXI.Sprite.from(new Carta(i, false).getDir()));
+        }
+        for(let i=0; i < nCard; i++){
+            cards.push(PIXI.Sprite.from(new Carta(i, false).getDir()));
+        }
+        let n = 0;
+        for(let i = 0; i < cards.length; i++) {
+            let temp = cards[i];
+            let j = Math.random() * (nCard - 1);
+            j = j.toFixed(0)
+            //console.log(j)
+            cards[i] = cards[j];
+            cards[j] = temp;
+            console.log(cards[i]);
+        }
+
+        let cardW = (width - 20 - (6 * 20))/6;
+        let cardH = (height - 20 - (4 * 20))/4;
+        let cont = 0;
+        for(let i = 0; i < 4; i++) { 
+            let h = 20 + (i * (cardH + 20));
+            for(let j = 0; j < 6; j++) {
+                cards[cont].x = 20 + (j * (cardW + 20));
+                cards[cont].y = h;
+                cards[cont].width = cardW; 
+                cards[cont].height = cardH;
+                app.stage.addChild(cards[cont]);
+                cont++;
+            }
+        }
+
+        //onmousedown
+            //check x, y
+            //find card by xy
+            //if no card selected
+                //select card
+            //else if cards are the same
+                //despawnale o incollaci sopra una foto a caso boh
+            //else deseleziona
+
+
+
     </script>
 </body>
 </html>
